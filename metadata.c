@@ -171,23 +171,6 @@ dlna_timestamp_is_present(const char * filename, int * raw_packet_size)
 	return 0;
 }
 
-#ifdef TIVO_SUPPORT
-int
-is_tivo_file(const char * path)
-{
-	unsigned char buf[5];
-	unsigned char hdr[5] = { 'T','i','V','o','\0' };
-	int fd;
-
-	/* read file header */
-	fd = open(path, O_RDONLY);
-	read(fd, buf, 5);
-	close(fd);
-
-	return( !memcmp(buf, hdr, 5) );
-}
-#endif
-
 void
 check_for_captions(const char * path, sqlite_int64 detailID)
 {
@@ -1577,18 +1560,6 @@ GetVideoMetadata(const char * path, char * name)
 video_no_dlna:
 	av_close_input_file(ctx);
 
-#ifdef TIVO_SUPPORT
-	if( ends_with(path, ".TiVo") && is_tivo_file(path) )
-	{
-		if( m.dlna_pn )
-		{
-			free(m.dlna_pn);
-			m.dlna_pn = NULL;
-		}
-		m.mime = realloc(m.mime, 18);
-		strcpy(m.mime, "video/x-tivo-mpeg");
-	}
-#endif
 	if( !m.title )
 		m.title = strdup(name);
 

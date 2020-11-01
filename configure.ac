@@ -480,13 +480,6 @@ AC_ARG_WITH(osurl,
 	[with_osurl="$withval"],[with_osurl="http://www.netgear.com"])
 AC_DEFINE_UNQUOTED([OS_URL],"${with_osurl}",[OS URL])
 
-AC_ARG_WITH(tivo,
-	AS_HELP_STRING([--with-tivo],[TiVo Support]),
-	[with_tivo="$withval"],[with_tivo="yes"])
-if test "$with_tivo" = "yes"; then
-   	AC_DEFINE([TIVO_SUPPORT],[1],[Define to 1 if you want to enable TiVo support])
-fi
-
 AC_ARG_WITH(netgear,
 	AS_HELP_STRING([--with-netgear],[NETGEAR ReadyNAS Support]),
 	[with_netgear="$withval"],[with_netgear="no"])

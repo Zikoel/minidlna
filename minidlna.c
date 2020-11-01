@@ -89,10 +89,6 @@
 #include "scanner.h"
 #include "inotify.h"
 #include "log.h"
-#ifdef TIVO_SUPPORT
-#include "tivo_beacon.h"
-#include "tivo_utils.h"
-#endif
 
 #if SQLITE_VERSION_NUMBER < 3005001
 # warning "Your SQLite3 library appears to be too old!  Please use 3.5.1 or newer."
@@ -225,67 +221,7 @@ getfriendlyname(char * buf, int len)
 
 	off = strlen(buf);
 	off += snprintf(buf+off, len-off, ": ");
-#ifdef READYNAS
-	FILE * info;
-	char ibuf[64], *key, *val;
-	snprintf(buf+off, len-off, "ReadyNAS");
-	info = fopen("/proc/sys/dev/boot/info", "r");
-	if( !info )
-		return;
-	while( (val = fgets(ibuf, 64, info)) != NULL )
-	{
-		key = strsep(&val, ": \t");
-		val = trim(val);
-		if( strcmp(key, "model") == 0 )
-		{
-			snprintf(buf+off, len-off, "%s", val);
-			key = strchr(val, ' ');
-			if( key )
-			{
-				strncpyt(modelnumber, key+1, MODELNUMBER_MAX_LEN);
-				*key = '\0';
-			}
-			snprintf(modelname, MODELNAME_MAX_LEN,
-				"Windows Media Connect compatible (%s)", val);
-		}
-		else if( strcmp(key, "serial") == 0 )
-		{
-			strncpyt(serialnumber, val, SERIALNUMBER_MAX_LEN);
-			if( serialnumber[0] == '\0' )
-			{
-				char mac_str[13];
-				if( getsyshwaddr(mac_str, sizeof(mac_str)) == 0 )
-					strcpy(serialnumber, mac_str);
-				else
-					strcpy(serialnumber, "0");
-			}
-			break;
-		}
-	}
-	fclose(info);
-	memcpy(pnpx_hwid+4, "01F2", 4);
-	if( strcmp(modelnumber, "NVX") == 0 )
-		memcpy(pnpx_hwid+17, "0101", 4);
-	else if( strcmp(modelnumber, "Pro") == 0 ||
-	         strcmp(modelnumber, "Pro 6") == 0 ||
-	         strncmp(modelnumber, "Ultra 6", 7) == 0 )
-		memcpy(pnpx_hwid+17, "0102", 4);
-	else if( strcmp(modelnumber, "Pro 2") == 0 ||
-	         strncmp(modelnumber, "Ultra 2", 7) == 0 )
-		memcpy(pnpx_hwid+17, "0103", 4);
-	else if( strcmp(modelnumber, "Pro 4") == 0 ||
-	         strncmp(modelnumber, "Ultra 4", 7) == 0 )
-		memcpy(pnpx_hwid+17, "0104", 4);
-	else if( strcmp(modelnumber+1, "100") == 0 )
-		memcpy(pnpx_hwid+17, "0105", 4);
-	else if( strcmp(modelnumber+1, "200") == 0 )
-		memcpy(pnpx_hwid+17, "0106", 4);
-	/* 0107 = Stora */
-	else if( strcmp(modelnumber, "Duo v2") == 0 )
-		memcpy(pnpx_hwid+17, "0108", 4);
-	else if( strcmp(modelnumber, "NV+ v2") == 0 )
-		memcpy(pnpx_hwid+17, "0109", 4);
-#else
+
 	char * logname;
 	logname = getenv("LOGNAME");
 #ifndef STATIC // Disable for static linking
@@ -298,7 +234,6 @@ getfriendlyname(char * buf, int len)
 	}
 #endif
 	snprintf(buf+off, len-off, "%s", logname?logname:"Unknown");
-#endif
 }
 
 static int
@@ -350,7 +285,7 @@ init(int argc, char * * argv)
 	char * path;
 	char buf[PATH_MAX];
 	char ip_addr[INET_ADDRSTRLEN + 3] = {'\0'};
-	char log_str[72] = "general,artwork,database,inotify,scanner,metadata,http,ssdp,tivo=warn";
+	char log_str[72] = "general,artwork,database,inotify,scanner,metadata,http,ssdp";
 	char *log_level = NULL;
 
 	/* first check if "-f" option is used */
@@ -548,10 +483,6 @@ init(int argc, char * * argv)
 			case UPNPINOTIFY:
 				if( (strcmp(ary_options[i].value, "yes") != 0) && !atoi(ary_options[i].value) )
 					CLEARFLAG(INOTIFY_MASK);
-				break;
-			case ENABLE_TIVO:
-				if( (strcmp(ary_options[i].value, "yes") == 0) || atoi(ary_options[i].value) )
-					SETFLAG(TIVO_MASK);
 				break;
 			case ENABLE_DLNA_STRICT:
 				if( (strcmp(ary_options[i].value, "yes") == 0) || atoi(ary_options[i].value) )
@@ -802,14 +733,10 @@ init(int argc, char * * argv)
 	else
 	{
 		pid = daemonize();
-		#ifdef READYNAS
-		log_init("/var/log/upnp-av.log", log_level);
-		#else
 		if( access(db_path, F_OK) != 0 )
 			make_dir(db_path, S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO);
 		sprintf(buf, "%s/minidlna.log", log_path);
 		log_init(buf, log_level);
-		#endif
 	}
 
 	if (checkforrunning(pidfilename) < 0)
@@ -863,12 +790,6 @@ main(int argc, char * * argv)
 	pthread_t inotify_thread = 0;
 	struct media_dir_s *media_path, *last_path;
 	struct album_art_name_s *art_names, *last_name;
-#ifdef TIVO_SUPPORT
-	unsigned short int beacon_interval = 5;
-	int sbeacon = -1;
-	struct sockaddr_in tivo_bcast;
-	struct timeval lastbeacontime = {0, 0};
-#endif
 
 	for (i = 0; i < L_MAX; i++)
 		log_level[i] = E_WARN;
@@ -882,10 +803,6 @@ main(int argc, char * * argv)
 	if (init(argc, argv) != 0)
 		return 1;
 
-#ifdef READYNAS
-	DPRINTF(E_WARN, L_GENERAL, "Starting " SERVER_NAME " version " MINIDLNA_VERSION ".\n");
-	unlink("/ramfs/.upnp-av_scan");
-#else
 	DPRINTF(E_WARN, L_GENERAL, "Starting " SERVER_NAME " version " MINIDLNA_VERSION " [SQLite %s].\n", sqlite3_libversion());
 	if( !sqlite3_threadsafe() )
 	{
@@ -897,7 +814,7 @@ main(int argc, char * * argv)
 	{
 		DPRINTF(E_WARN, L_GENERAL, "SQLite library is old.  Please use version 3.5.1 or newer.\n");
 	}
-#endif
+
 	LIST_INIT(&upnphttphead);
 
 	if( open_db() == 0 )
@@ -996,32 +913,6 @@ main(int argc, char * * argv)
 	                "messages. EXITING\n");
 	}
 
-#ifdef TIVO_SUPPORT
-	if( GETFLAG(TIVO_MASK) )
-	{
-		DPRINTF(E_WARN, L_GENERAL, "TiVo support is enabled.\n");
-		/* Add TiVo-specific randomize function to sqlite */
-		if( sqlite3_create_function(db, "tivorandom", 1, SQLITE_UTF8, NULL, &TiVoRandomSeedFunc, NULL, NULL) != SQLITE_OK )
-		{
-			DPRINTF(E_ERROR, L_TIVO, "ERROR: Failed to add sqlite randomize function for TiVo!\n");
-		}
-		/* open socket for sending Tivo notifications */
-		sbeacon = OpenAndConfTivoBeaconSocket();
-		if(sbeacon < 0)
-		{
-			DPRINTF(E_FATAL, L_GENERAL, "Failed to open sockets for sending Tivo beacon notify "
-		                "messages. EXITING\n");
-		}
-		tivo_bcast.sin_family = AF_INET;
-		tivo_bcast.sin_addr.s_addr = htonl(getBcastAddress());
-		tivo_bcast.sin_port = htons(2190);
-	}
-	else
-	{
-		sbeacon = -1;
-	}
-#endif
-
 	SendSSDPGoodbye(snotify, n_lan_addr);
 
 	/* main loop */
@@ -1062,31 +953,6 @@ main(int argc, char * * argv)
 					timeout.tv_usec = lastnotifytime.tv_usec - timeofday.tv_usec;
 				}
 			}
-#ifdef TIVO_SUPPORT
-			if( GETFLAG(TIVO_MASK) )
-			{
-				if(timeofday.tv_sec >= (lastbeacontime.tv_sec + beacon_interval))
-				{
-   					sendBeaconMessage(sbeacon, &tivo_bcast, sizeof(struct sockaddr_in), 1);
-					memcpy(&lastbeacontime, &timeofday, sizeof(struct timeval));
-					if( timeout.tv_sec > beacon_interval )
-					{
-						timeout.tv_sec = beacon_interval;
-						timeout.tv_usec = 0;
-					}
-					/* Beacons should be sent every 5 seconds or so for the first minute,
-					 * then every minute or so thereafter. */
-					if( beacon_interval == 5 && (timeofday.tv_sec - startup_time) > 60 )
-					{
-						beacon_interval = 60;
-					}
-				}
-				else if( timeout.tv_sec > (lastbeacontime.tv_sec + beacon_interval + 1 - timeofday.tv_sec) )
-				{
-					timeout.tv_sec = lastbeacontime.tv_sec + beacon_interval - timeofday.tv_sec;
-				}
-			}
-#endif
 		}
 
 		if( scanning )
@@ -1112,13 +978,7 @@ main(int argc, char * * argv)
 			FD_SET(shttpl, &readset);
 			max_fd = MAX(max_fd, shttpl);
 		}
-#ifdef TIVO_SUPPORT
-		if (sbeacon >= 0) 
-		{
-			FD_SET(sbeacon, &readset);
-			max_fd = MAX(max_fd, sbeacon);
-		}
-#endif
+
 		i = 0;	/* active HTTP connections count */
 		for(e = upnphttphead.lh_first; e != NULL; e = e->entries.le_next)
 		{
@@ -1152,13 +1012,7 @@ main(int argc, char * * argv)
 			/*DPRINTF(E_DEBUG, L_GENERAL, "Received UDP Packet\n");*/
 			ProcessSSDPRequest(sudp, (unsigned short)runtime_vars.port);
 		}
-#ifdef TIVO_SUPPORT
-		if(sbeacon >= 0 && FD_ISSET(sbeacon, &readset))
-		{
-			/*DPRINTF(E_DEBUG, L_GENERAL, "Received UDP Packet\n");*/
-			ProcessTiVoBeacon(sbeacon);
-		}
-#endif
+
 		/* increment SystemUpdateID if the content database has changed,
 		 * and if there is an active HTTP connection, at most once every 2 seconds */
 		if( i && (timeofday.tv_sec >= (lastupdatetime + 2)) )
@@ -1245,10 +1099,6 @@ shutdown:
 		close(sudp);
 	if (shttpl >= 0)
 		close(shttpl);
-	#ifdef TIVO_SUPPORT
-	if (sbeacon >= 0)
-		close(sbeacon);
-	#endif
 	
 	if(SendSSDPGoodbye(snotify, n_lan_addr) < 0)
 		DPRINTF(E_ERROR, L_GENERAL, "Failed to broadcast good-bye notifications\n");

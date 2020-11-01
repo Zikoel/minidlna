@@ -58,11 +58,7 @@
 
 #define MINIDLNA_VERSION "1.1.0-cvs"
 
-#ifdef NETGEAR
-# define SERVER_NAME "ReadyDLNA"
-#else
-# define SERVER_NAME "MiniDLNA"
-#endif
+#define SERVER_NAME "MiniDLNA"
 
 #define CLIENT_CACHE_SLOTS 20
 #define USE_FORK 1

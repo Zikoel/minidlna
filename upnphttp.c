@@ -75,10 +75,6 @@
 #include "log.h"
 #include "sql.h"
 #include <libexif/exif-loader.h>
-#ifdef TIVO_SUPPORT
-#include "tivo_utils.h"
-#include "tivo_commands.h"
-#endif
 
 #include "sendfile.h"
 
@@ -685,10 +681,6 @@ SendResp_presentation(struct upnphttp * h)
 	int l;
 	h->respflags = FLAG_HTML;
 
-#ifdef READYNAS
-	l = snprintf(body, sizeof(body), "<meta http-equiv=\"refresh\" content=\"0; url=https://%s/admin/\">",
-	             lan_addr[h->iface].str);
-#else
 	int a, v, p;
 	a = sql_get_int_field(db, "SELECT count(*) from DETAILS where MIME glob 'a*'");
 	v = sql_get_int_field(db, "SELECT count(*) from DETAILS where MIME glob 'v*'");
@@ -701,7 +693,6 @@ SendResp_presentation(struct upnphttp * h)
                 "Video files: %d<br>"
                 "Image files: %d</div>"
 		"</BODY></HTML>\r\n", a, v, p);
-#endif
 	BuildResp_upnphttp(h, body, l);
 	SendResp_upnphttp(h);
 	CloseSocket_upnphttp(h);
@@ -966,29 +957,6 @@ ProcessHttpQuery_upnphttp(struct upnphttp * h)
 		{
 			SendResp_albumArt(h, HttpUrl+10);
 		}
-		#ifdef TIVO_SUPPORT
-		else if(strncmp(HttpUrl, "/TiVoConnect", 12) == 0)
-		{
-			if( GETFLAG(TIVO_MASK) )
-			{
-				if( *(HttpUrl+12) == '?' )
-				{
-					ProcessTiVoCommand(h, HttpUrl+13);
-				}
-				else
-				{
-					DPRINTF(E_WARN, L_HTTP, "Invalid TiVo request! %s\n", HttpUrl+12);
-					Send404(h);
-				}
-			}
-			else
-			{
-				DPRINTF(E_WARN, L_HTTP, "TiVo request with out TiVo support enabled! %s\n",
-					HttpUrl+12);
-				Send404(h);
-			}
-		}
-		#endif
 		else if(strncmp(HttpUrl, "/Resized/", 9) == 0)
 		{
 			SendResp_resizedimg(h, HttpUrl+9);
@@ -1597,9 +1565,6 @@ SendResp_resizedimg(struct upnphttp * h, char * object)
 	path = saveptr ? saveptr + 1 : object;
 	for( item = strtok_r(path, "&,", &saveptr); item != NULL; item = strtok_r(NULL, "&,", &saveptr) )
 	{
-#ifdef TIVO_SUPPORT
-		decodeString(item, 1);
-#endif
 		val = item;
 		key = strsep(&val, "=");
 		if( !val )
